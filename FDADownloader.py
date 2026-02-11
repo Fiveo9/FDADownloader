@@ -19,7 +19,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 
 class FDADownloader:
-    def __init__(self, target_url, download_dir="fda_downloads"):
+    def __init__(self, target_url, download_dir="FDA_Downloads"):
         self.target_url = target_url
         self.download_dir = os.path.abspath(download_dir)
 
@@ -277,7 +277,7 @@ class FDADownloader:
 
         except PermissionError:
             print(f"\n[!] 错误: 无法写入 '{filename}' (文件被占用)。尝试另存为...")
-            new_filename = f"fda_guidance_data_{int(time.time())}.xlsx"
+            new_filename = f"FDA_Guidance_Data_{int(time.time())}.xlsx"
             return self.save_to_excel(data, new_filename)
         except Exception as e:
             print(f"[!] 导出 Excel 错误: {e}")
@@ -308,6 +308,7 @@ class FDADownloader:
 
         print(f"\n[*] 切换至【浏览器原生下载模式】...")
         print("[*] 这种模式较慢（单线程），但能绕过反爬虫。")
+        print("[*] 文件匹配模式: 前缀模糊匹配")
 
         success_count = 0
         downloadable_items = [item for item in data if item.get('Download URL')]
@@ -316,25 +317,20 @@ class FDADownloader:
         pbar = tqdm(data, unit="file")
         for item in pbar:
             url = item.get('Download URL')
-            # 如果没有链接，跳过下载步骤，但进度条继续
             if not url:
                 continue
 
             # --- 命名规则：IssueDate(yyyymmdd)_Summary ---
             summary = str(item.get('Summary', '')).strip()
-            # 兼容处理
             if not summary or summary.lower() == 'nan':
                 summary = str(item.get('Topic', '')).strip()
                 if not summary or summary.lower() == 'nan':
-                    # 使用内部 Title 作为最后兜底
                     summary = str(item.get('_Title_Internal', 'No_Summary')).strip()
 
-            # 清洗非法字符
             safe_summary = re.sub(r'[\\/*?:"<>|\r\n\t]', "", summary)
             if len(safe_summary) > 100:
                 safe_summary = safe_summary[:100].strip()
 
-            # 处理日期
             date_raw = item.get('Issue Date', '')
             formatted_date = "00000000"
             if pd.notna(date_raw):
@@ -344,17 +340,37 @@ class FDADownloader:
                 except:
                     formatted_date = re.sub(r'[\\/*?:"<>|]', "", str(date_raw))
 
-            # 组合文件名
-            target_filename = f"{formatted_date}_{safe_summary}"
-            target_path_base = os.path.join(self.download_dir, target_filename)
+            # 目标文件名主干
+            target_filename_stem = f"{formatted_date}_{safe_summary}"
 
-            # 跳过已存在
-            if any(os.path.exists(target_path_base + ext) for ext in
-                   ['.pdf', '.docx', '.doc', '.zip', '.xls', '.xlsx']):
-                pbar.set_description(f"跳过(已存在): {target_filename[:15]}...")
+            # 模糊匹配逻辑
+            # 为了容忍文件名的细微差别 (例如末尾字符不同，或者已经有了 _1, (1) 等后缀)
+            # 我们检查目录下是否有文件 以 target_filename_stem 的前 90% 开头
+
+            # 至少匹配前缀长度
+            match_len = max(len(formatted_date) + 5, int(len(target_filename_stem) * 0.9))
+            prefix_to_check = target_filename_stem[:match_len]
+
+            # 遍历已有文件列表进行前缀检查
+            already_exists = False
+            for existing_file in self.existing_files:
+                # 忽略临时文件
+                if existing_file.endswith(('.crdownload', '.tmp')):
+                    continue
+                # 检查前缀 (忽略大小写可能更好，但Linux下敏感，这里保持敏感或视情况而定)
+                if existing_file.startswith(prefix_to_check):
+                    already_exists = True
+                    break
+
+            target_path_base = os.path.join(self.download_dir, target_filename_stem)
+
+            # 如果模糊匹配成功，或者完全匹配成功
+            if already_exists or any(os.path.exists(target_path_base + ext) for ext in
+                                     ['.pdf', '.docx', '.doc', '.zip', '.xls', '.xlsx']):
+                pbar.set_description(f"跳过(已存在): {target_filename_stem[:15]}...")
                 continue
 
-            pbar.set_description(f"下载中: {target_filename[:15]}...")
+            pbar.set_description(f"下载中: {target_filename_stem[:15]}...")
 
             try:
                 self.driver.get(url)
@@ -365,7 +381,6 @@ class FDADownloader:
                     if not ext: ext = ".pdf"
                     final_path = target_path_base + ext
 
-                    # 重命名 (带重试)
                     renamed = False
                     for _ in range(3):
                         try:
@@ -397,7 +412,7 @@ class FDADownloader:
         data = []
         # 文件名添加当前日期
         current_date = time.strftime("%Y%m%d")
-        excel_filename = f"fda_guidance_data_{current_date}.xlsx"
+        excel_filename = f"FDA_Guidance_Data_{current_date}.xlsx"
 
         load_from_local = False
 

@@ -81,38 +81,85 @@ class FDAOrganizer:
 
     def _clean_text(self, text):
         if pd.isna(text): return ""
-        text = str(text).strip()
-        text = text.replace('\n', ' ').replace('\r', '')
-        return re.sub(r'[\\/*?:"<>|]', "", text).strip()
+        return re.sub(r'[\\/*?:"<>|\r\n\t]', "", str(text)).strip()
 
     def _get_formatted_date(self, date_val):
         if pd.isna(date_val): return "00000000"
         try:
             return pd.to_datetime(date_val).strftime('%Y%m%d')
         except:
-            return "00000000"
+            return re.sub(r'[\\/*?:"<>|]', "", str(date_val)).strip()
 
     def determine_category(self, org_text):
         if pd.isna(org_text): return "Uncategorized"
         org_upper = str(org_text).upper()
-
         for keyword, folder_name in self.org_mapping:
-            if keyword in org_upper:
-                return folder_name
-
-        return "Uncategorized"  # 如果还有没匹配上的，会留在这里
+            if keyword in org_upper: return folder_name
+        return "Uncategorized"
 
     def reconstruct_filename(self, row):
+        """生成完美的标准化目标文件名 (不包含后缀)"""
+        summary = str(row.get('Summary', '')).strip()
+        if not summary or summary.lower() == 'nan':
+            summary = str(row.get('Topic', '')).strip()
+        safe_summary = self._clean_text(summary)
+        if len(safe_summary) > 120: safe_summary = safe_summary[:120].strip()
+        date_str = self._get_formatted_date(row.get('Issue Date'))
+        return f"{date_str}_{safe_summary}"
+
+    def find_matching_file(self, row, available_files):
+        """智能模糊搜索核心：容忍文件名截断、空格、大小写等微小差异"""
         summary = str(row.get('Summary', '')).strip()
         if not summary or summary.lower() == 'nan':
             summary = str(row.get('Topic', '')).strip()
 
-        safe_summary = self._clean_text(summary)
-        if len(safe_summary) > 120:
-            safe_summary = safe_summary[:120].strip()
-
         date_str = self._get_formatted_date(row.get('Issue Date'))
-        return f"{date_str}_{safe_summary}"
+        # 终极归一化：剥离所有非字母数字字符
+        norm_target = re.sub(r'[^a-zA-Z0-9]', '', summary).lower()
+
+        best_match = None
+        best_score = 0
+
+        # Pass 1: 日期 + 内容智能匹配
+        for f_name in available_files:
+            if f_name.endswith('.crdownload') or f_name.endswith('.tmp') or f_name.startswith('~$'):
+                continue
+
+            if f_name.startswith(f"{date_str}_"):
+                base_name = os.path.splitext(f_name)[0]
+                file_summary = base_name[len(date_str) + 1:]
+                norm_file = re.sub(r'[^a-zA-Z0-9]', '', file_summary).lower()
+
+                if norm_target == norm_file:
+                    return f_name  # 精确匹配直接返回
+
+                # 如果本地文件是目标名称的缩写
+                if norm_file and norm_target.startswith(norm_file):
+                    if len(norm_file) > best_score:
+                        best_score = len(norm_file)
+                        best_match = f_name
+
+                # 如果目标名称是本地文件的缩写
+                elif norm_target and norm_file.startswith(norm_target):
+                    if len(norm_target) > best_score:
+                        best_score = len(norm_target)
+                        best_match = f_name
+
+        if best_match:
+            return best_match
+
+        # Pass 2: 放弃日期的极限抢救 (针对特殊日期被旧脚本解析错误的情况)
+        if len(norm_target) > 20:
+            for f_name in available_files:
+                if f_name.endswith('.crdownload') or f_name.endswith('.tmp'): continue
+                base_name = os.path.splitext(f_name)[0]
+                parts = base_name.split('_', 1)
+                if len(parts) == 2:
+                    norm_file = re.sub(r'[^a-zA-Z0-9]', '', parts[1]).lower()
+                    if norm_file and (norm_target.startswith(norm_file) or norm_file.startswith(norm_target)):
+                        return f_name
+
+        return None
 
     def run(self):
         print(f"[*] 读取 Excel 文件: {self.excel_path}")
@@ -123,72 +170,79 @@ class FDAOrganizer:
             return
 
         if not os.path.exists(self.source_dir):
-            print(f"[!] 源文件夹 {self.source_dir} 不存在！")
+            print(f"[!] 源文件夹 {self.source_dir} 不存在！请检查拼写是否正确。")
             return
 
         success_count = 0
         skip_count = 0
         fail_count = 0
 
-        print(f"[*] 开始整理并建立索引... 目标目录: {self.target_dir}")
+        # 获取源文件夹所有有效文件清单
+        available_files = [f for f in os.listdir(self.source_dir) if os.path.isfile(os.path.join(self.source_dir, f))]
+
+        print(f"[*] 启动智能匹配引擎... 目标目录: {self.target_dir}")
 
         for _, row in tqdm(df.iterrows(), total=df.shape[0], unit="file"):
             folder_l1 = self.determine_category(row.get('FDA Organization'))
             target_path_dir = os.path.join(self.target_dir, folder_l1)
-            base_filename = self.reconstruct_filename(row)
+            target_base_filename = self.reconstruct_filename(row)
+            row_data = row.to_dict()
 
-            found_src_file = None
+            # 1. 检查是否已经存在于结构化目录 (支持增量更新)
+            already_exists = False
             detected_ext = ""
-            possible_extensions = ['.pdf', '.docx', '.doc', '.zip', '.xlsx']
-            for ext in possible_extensions:
-                potential_path = os.path.join(self.source_dir, base_filename + ext)
-                if os.path.exists(potential_path):
-                    found_src_file = potential_path
+            for ext in ['.pdf', '.docx', '.doc', '.zip', '.xlsx']:
+                potential_dst = os.path.join(target_path_dir, target_base_filename + ext)
+                if os.path.exists(potential_dst):
+                    already_exists = True
                     detected_ext = ext
                     break
 
-            row_data = row.to_dict()
-
-            if not found_src_file:
-                fail_count += 1
-                row_data['Local Status'] = "未下载"
-                row_data['Local Hyperlink'] = ""
+            if already_exists:
+                skip_count += 1
+                row_data['Local Status'] = "已归档"
+                rel_path = os.path.join(folder_l1, target_base_filename + detected_ext)
+                row_data['Local Hyperlink'] = f'=HYPERLINK("{rel_path}", "打开文件")'
             else:
-                if not os.path.exists(target_path_dir):
-                    os.makedirs(target_path_dir)
+                # 2. 如果新目录没有，在原始下载目录进行【智能模糊搜索】
+                found_src_filename = self.find_matching_file(row, available_files)
 
-                final_dst_path = os.path.join(target_path_dir, base_filename + detected_ext)
+                if not found_src_filename:
+                    fail_count += 1
+                    row_data['Local Status'] = "未下载"
+                    row_data['Local Hyperlink'] = ""
+                else:
+                    found_src_path = os.path.join(self.source_dir, found_src_filename)
+                    detected_ext = os.path.splitext(found_src_filename)[1]
 
-                try:
-                    if not os.path.exists(final_dst_path):
-                        shutil.copy2(found_src_file, final_dst_path)
+                    if not os.path.exists(target_path_dir):
+                        os.makedirs(target_path_dir)
+
+                    # 3. 以完美的标准化名字复制过去
+                    final_dst_path = os.path.join(target_path_dir, target_base_filename + detected_ext)
+
+                    try:
+                        shutil.copy2(found_src_path, final_dst_path)
                         success_count += 1
-                    else:
-                        skip_count += 1
-
-                    row_data['Local Status'] = "已归档"
-                    rel_path = os.path.join(folder_l1, base_filename + detected_ext)
-                    formula = f'=HYPERLINK("{rel_path}", "打开文件")'
-                    row_data['Local Hyperlink'] = formula
-
-                except Exception as e:
-                    print(f"\n[!] 复制错误: {e}")
-                    row_data['Local Status'] = "复制失败"
+                        row_data['Local Status'] = "已归档"
+                        rel_path = os.path.join(folder_l1, target_base_filename + detected_ext)
+                        row_data['Local Hyperlink'] = f'=HYPERLINK("{rel_path}", "打开文件")'
+                    except Exception as e:
+                        print(f"\n[!] 复制错误: {e}")
+                        row_data['Local Status'] = "复制失败"
+                        row_data['Local Hyperlink'] = ""
 
             if folder_l1 not in self.sheet_data:
                 self.sheet_data[folder_l1] = []
             self.sheet_data[folder_l1].append(row_data)
 
-        # 导出 Excel
+        # 导出 Excel 汇总表
         print("\n[*] 正在生成带索引的 Excel 汇总表...")
         index_excel_path = os.path.join(self.target_dir, "00_FDA_Guidance_Index.xlsx")
-
         try:
             with pd.ExcelWriter(index_excel_path, engine='openpyxl') as writer:
-                # 把 Uncategorized 放到最后
                 sorted_sheets = sorted([s for s in self.sheet_data.keys() if s != "Uncategorized"])
-                if "Uncategorized" in self.sheet_data:
-                    sorted_sheets.append("Uncategorized")
+                if "Uncategorized" in self.sheet_data: sorted_sheets.append("Uncategorized")
 
                 for sheet_name in sorted_sheets:
                     sheet_rows = self.sheet_data[sheet_name]
@@ -199,47 +253,35 @@ class FDAOrganizer:
                                                                                c not in cols and c != 'Download URL']
 
                     df_sheet = df_sheet[final_cols]
-                    safe_sheet_name = sheet_name[:30]
-                    df_sheet.to_excel(writer, sheet_name=safe_sheet_name, index=False)
-
+                    df_sheet.to_excel(writer, sheet_name=sheet_name[:30], index=False)
             print(f"[√] 索引文件已生成: {index_excel_path}")
-
         except Exception as e:
             print(f"[!] 生成 Excel 索引失败: {e}")
 
         print("\n" + "=" * 50)
-        print(f"整理完成！成功: {success_count}, 跳过: {skip_count}, 缺失: {fail_count}")
+        print(f"整理完成！成功复制(新增): {success_count}, 跳过(已存在): {skip_count}, 缺失源文件: {fail_count}")
         print("=" * 50)
 
-
 if __name__ == "__main__":
-
-    excel_pattern = re.compile(r'FDA_Guidance_Data_(\d{8})\.xlsx')
+    excel_pattern = re.compile(r'FDA_Guidance_Data_(\d{8})\.xlsx', re.IGNORECASE)
     candidates = []
-
-    print("[*] 正在扫描当前目录下的 Excel 数据文件...")
     for f in os.listdir('.'):
         match = excel_pattern.match(f)
-        if match:
-            date_str = match.group(1)
-            candidates.append((f, date_str))
+        if match: candidates.append((f, match.group(1)))
 
     EXCEL_FILE = ""
     if candidates:
-        # 按日期字符串排序 (YYYYMMDD 字符串排序等同于日期排序)
         candidates.sort(key=lambda x: x[1], reverse=True)
         EXCEL_FILE = candidates[0][0]
-        print(f"[*] 自动锁定最新 Excel 文件: {EXCEL_FILE} (日期: {candidates[0][1]})")
+        print(f"[*] 自动锁定最新 Excel 文件: {EXCEL_FILE}")
     else:
-        print("[!] 未找到符合 FDA_Guidance_Data_YYYYMMDD.xlsx 格式的文件。")
-        print("[*] 尝试查找任意 xlsx 文件作为兜底...")
-        any_xlsx = [f for f in os.listdir('.') if f.startswith('FDA_Guidance_Data') and f.endswith('.xlsx')]
+        any_xlsx = [f for f in os.listdir('.') if f.lower().startswith('fda_guidance_data') and f.endswith('.xlsx')]
         if any_xlsx:
             any_xlsx.sort(reverse=True)
             EXCEL_FILE = any_xlsx[0]
             print(f"[*] 使用兜底文件: {EXCEL_FILE}")
         else:
-            print("[!] 错误：当前目录下没有找到任何数据文件，请先运行下载脚本。")
+            print("[!] 未找到Excel文件")
             exit()
 
     SOURCE_FOLDER = "FDA_Downloads"

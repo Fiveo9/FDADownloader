@@ -64,8 +64,8 @@ python FDAOrganizer.py
 
 1. 自动扫描当前目录下最新的 FDA\_Guidance\_Data\_YYYYMMDD.xlsx 文件。  
 2. 读取 FDA\_Downloads 文件夹中的源文件。  
-3. 根据内置的优先级规则，将文件**复制**到 FDA\_Structured\_Library 目录下的分类子文件夹中。  
-4. 在 FDA\_Structured\_Library 根目录生成 00\_FDA\_Guidance\_Index.xlsx，其中包含指向整理后文件的本地超链接。
+3. 根据内置的优先级规则，将文件**复制**到 FDA\_Guidance\_Library 目录下的分类子文件夹中。  
+4. 在 FDA\_Guidance\_Library 根目录生成 00\_FDA\_Guidance\_Index.xlsx，其中包含指向整理后文件的本地超链接。
 
 ## **📂 目录结构示例**
 

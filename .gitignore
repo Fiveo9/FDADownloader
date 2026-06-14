@@ -2,3 +2,7 @@
 *.xlsx
 /fda_downloads
 /FDA_Guidance_Library
+__pycache__/
+.pytest_cache/
+.tmp-uv-cache/
+.tmp-uv-python/

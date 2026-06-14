@@ -2,6 +2,7 @@ import os
 import time
 import re
 import random
+import csv
 import pandas as pd
 import subprocess
 from urllib.parse import urljoin
@@ -30,6 +31,7 @@ class FDADownloader:
         # 记录初始文件，用于判断哪个是新下载的
         self.existing_files = set(os.listdir(self.download_dir))
         self.driver = None  # 保持 Driver 实例在整个流程中存活
+        self.download_failures = []
 
     def get_local_chrome_version(self, chrome_path):
         """
@@ -283,6 +285,33 @@ class FDADownloader:
             print(f"[!] 导出 Excel 错误: {e}")
             return False
 
+    def record_download_failure(self, item, reason):
+        """记录单个下载失败项，稍后统一导出为 CSV。"""
+        self.download_failures.append({
+            "Issue Date": item.get("Issue Date", ""),
+            "Summary": item.get("Summary") or item.get("Topic") or item.get("_Title_Internal", ""),
+            "Topic": item.get("Topic", ""),
+            "Download URL": item.get("Download URL", ""),
+            "Reason": reason,
+        })
+
+    def save_download_failures(self, filename=None):
+        """将下载失败清单写入 CSV；没有失败时不创建文件。"""
+        if not self.download_failures:
+            return False
+
+        if filename is None:
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = os.path.join(self.download_dir, f"download_failures_{timestamp}.csv")
+
+        fieldnames = ["Issue Date", "Summary", "Topic", "Download URL", "Reason"]
+        with open(filename, "w", newline="", encoding="utf-8-sig") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(self.download_failures)
+
+        return filename
+
     def wait_for_new_file(self, timeout=60):
         """等待下载目录下出现新文件，并返回新文件的路径"""
         end_time = time.time() + timeout
@@ -382,6 +411,7 @@ class FDADownloader:
                     final_path = target_path_base + ext
 
                     renamed = False
+                    last_rename_error = None
                     for _ in range(3):
                         try:
                             if os.path.exists(final_path):
@@ -389,21 +419,31 @@ class FDADownloader:
                             os.rename(downloaded_file_path, final_path)
                             renamed = True
                             break
-                        except PermissionError:
+                        except PermissionError as e:
+                            last_rename_error = e
                             time.sleep(1)
-                        except Exception:
+                        except Exception as e:
+                            last_rename_error = e
                             break
 
                     if renamed:
                         self.existing_files.add(os.path.basename(final_path))
                         success_count += 1
+                    else:
+                        reason = "rename failed"
+                        if last_rename_error:
+                            reason = f"{reason}: {last_rename_error}"
+                        self.record_download_failure(item, reason)
                 else:
-                    pass
-            except Exception:
-                pass
+                    self.record_download_failure(item, "download timeout")
+            except Exception as e:
+                self.record_download_failure(item, f"download error: {e}")
 
             time.sleep(random.uniform(0.5, 1.5))
 
+        failure_report = self.save_download_failures()
+        if failure_report:
+            print(f"[!] 下载失败清单已保存: {failure_report}")
         print(f"\n[√] 下载完成。共成功下载: {success_count} 个文件")
 
     def run(self):

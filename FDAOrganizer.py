@@ -13,6 +13,7 @@ def parse_args(argv=None):
     parser.add_argument("--source", default="FDA_Downloads", help="Source directory containing downloaded files.")
     parser.add_argument("--target", default="FDA_Guidance_Library", help="Target directory for the organized library.")
     parser.add_argument("--rules", default="classification_rules.csv", help="CSV file containing Keyword,Folder classification rules.")
+    parser.add_argument("--dry-run", action="store_true", help="Preview organization results without copying files or writing the index.")
     return parser.parse_args(argv)
 
 
@@ -38,10 +39,11 @@ def find_latest_excel(directory="."):
 
 class FDAOrganizer:
     def __init__(self, excel_path, source_dir="FDA_Downloads", target_dir="FDA_Structured_Library",
-                 rules_path="classification_rules.csv"):
+                 rules_path="classification_rules.csv", dry_run=False):
         self.excel_path = excel_path
         self.source_dir = source_dir
         self.target_dir = target_dir
+        self.dry_run = dry_run
 
         # 定义分类优先级映射 (关键词匹配 -> 文件夹名)
         # 注意：列表顺序决定优先级，一旦匹配成功即停止
@@ -273,28 +275,40 @@ class FDAOrganizer:
                     found_src_path = os.path.join(self.source_dir, found_src_filename)
                     detected_ext = os.path.splitext(found_src_filename)[1]
 
-                    if not os.path.exists(target_path_dir):
-                        os.makedirs(target_path_dir)
-
                     # 3. 以完美的标准化名字复制过去
                     final_dst_path = os.path.join(target_path_dir, target_base_filename + detected_ext)
+                    rel_path = os.path.join(folder_l1, target_base_filename + detected_ext)
 
-                    try:
-                        shutil.copy2(found_src_path, final_dst_path)
+                    if self.dry_run:
                         success_count += 1
-                        row_data['Local Status'] = "已归档"
-                        rel_path = os.path.join(folder_l1, target_base_filename + detected_ext)
-                        row_data['Local Hyperlink'] = f'=HYPERLINK("{rel_path}", "打开文件")'
-                    except Exception as e:
-                        print(f"\n[!] 复制错误: {e}")
-                        row_data['Local Status'] = "复制失败"
-                        row_data['Local Hyperlink'] = ""
+                        row_data['Local Status'] = "预览归档"
+                        row_data['Local Hyperlink'] = f'=HYPERLINK("{rel_path}", "预览路径")'
+                    else:
+                        if not os.path.exists(target_path_dir):
+                            os.makedirs(target_path_dir)
+
+                        try:
+                            shutil.copy2(found_src_path, final_dst_path)
+                            success_count += 1
+                            row_data['Local Status'] = "已归档"
+                            row_data['Local Hyperlink'] = f'=HYPERLINK("{rel_path}", "打开文件")'
+                        except Exception as e:
+                            print(f"\n[!] 复制错误: {e}")
+                            row_data['Local Status'] = "复制失败"
+                            row_data['Local Hyperlink'] = ""
 
             if folder_l1 not in self.sheet_data:
                 self.sheet_data[folder_l1] = []
             self.sheet_data[folder_l1].append(row_data)
 
         # 导出 Excel 汇总表
+        if self.dry_run:
+            print("\n[*] Dry run 模式：跳过文件复制后的 Excel 索引生成。")
+            print("\n" + "=" * 50)
+            print(f"预览完成！将新增归档: {success_count}, 跳过(已存在): {skip_count}, 缺失源文件: {fail_count}")
+            print("=" * 50)
+            return
+
         print("\n[*] 正在生成带索引的 Excel 汇总表...")
         index_excel_path = os.path.join(self.target_dir, "00_FDA_Guidance_Index.xlsx")
         try:
@@ -336,5 +350,5 @@ if __name__ == "__main__":
             print("[!] 未找到Excel文件")
             exit()
 
-    organizer = FDAOrganizer(EXCEL_FILE, args.source, args.target, args.rules)
+    organizer = FDAOrganizer(EXCEL_FILE, args.source, args.target, args.rules, args.dry_run)
     organizer.run()

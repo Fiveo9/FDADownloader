@@ -72,6 +72,12 @@ python FDAOrganizer.py
 python FDAOrganizer.py --excel FDA_Guidance_Data_20260529.xlsx --source FDA_Downloads --target FDA_Guidance_Library --rules classification_rules.csv
 ```
 
+预览整理结果但不复制文件、不生成索引：
+
+```
+python FDAOrganizer.py --dry-run
+```
+
 **运行流程：**
 
 1. 自动扫描当前目录下最新的 FDA\_Guidance\_Data\_YYYYMMDD.xlsx 文件。  

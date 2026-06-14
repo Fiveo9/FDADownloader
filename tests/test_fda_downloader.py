@@ -52,6 +52,35 @@ from FDADownloader import FDADownloader
 
 
 class FDADownloaderFailureLogTests(unittest.TestCase):
+    def test_download_manifest_writes_status_rows_to_csv(self):
+        with tempfile.TemporaryDirectory() as download_dir:
+            downloader = FDADownloader("https://example.test", download_dir=download_dir)
+            item = {
+                "Summary": "Already downloaded guidance",
+                "Topic": "Drugs",
+                "Issue Date": "2026-02-03",
+                "Download URL": "https://example.test/already.pdf",
+            }
+
+            downloader.record_download_status(
+                item,
+                status="skipped_existing",
+                local_path=os.path.join(download_dir, "20260203_Already downloaded guidance.pdf"),
+            )
+            manifest_path = os.path.join(download_dir, "manifest.csv")
+
+            self.assertEqual(manifest_path, downloader.save_download_manifest(manifest_path))
+            with open(manifest_path, newline="", encoding="utf-8-sig") as manifest_file:
+                rows = list(csv.DictReader(manifest_file))
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("2026-02-03", rows[0]["Issue Date"])
+        self.assertEqual("Already downloaded guidance", rows[0]["Summary"])
+        self.assertEqual("https://example.test/already.pdf", rows[0]["Download URL"])
+        self.assertEqual("skipped_existing", rows[0]["Status"])
+        self.assertTrue(rows[0]["Local Path"].endswith("20260203_Already downloaded guidance.pdf"))
+        self.assertEqual("", rows[0]["Reason"])
+
     def test_failure_report_writes_download_context_to_csv(self):
         with tempfile.TemporaryDirectory() as download_dir:
             downloader = FDADownloader("https://example.test", download_dir=download_dir)

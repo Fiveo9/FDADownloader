@@ -32,6 +32,7 @@ class FDADownloader:
         self.existing_files = set(os.listdir(self.download_dir))
         self.driver = None  # 保持 Driver 实例在整个流程中存活
         self.download_failures = []
+        self.download_manifest = []
 
     def get_local_chrome_version(self, chrome_path):
         """
@@ -294,6 +295,19 @@ class FDADownloader:
             "Download URL": item.get("Download URL", ""),
             "Reason": reason,
         })
+        self.record_download_status(item, status="failed", reason=reason)
+
+    def record_download_status(self, item, status, local_path="", reason=""):
+        """记录单条下载任务的最终状态。"""
+        self.download_manifest.append({
+            "Issue Date": item.get("Issue Date", ""),
+            "Summary": item.get("Summary") or item.get("Topic") or item.get("_Title_Internal", ""),
+            "Topic": item.get("Topic", ""),
+            "Download URL": item.get("Download URL", ""),
+            "Status": status,
+            "Local Path": local_path,
+            "Reason": reason,
+        })
 
     def save_download_failures(self, filename=None):
         """将下载失败清单写入 CSV；没有失败时不创建文件。"""
@@ -309,6 +323,23 @@ class FDADownloader:
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(self.download_failures)
+
+        return filename
+
+    def save_download_manifest(self, filename=None):
+        """将本次下载任务状态写入 CSV；没有状态记录时不创建文件。"""
+        if not self.download_manifest:
+            return False
+
+        if filename is None:
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = os.path.join(self.download_dir, f"download_manifest_{timestamp}.csv")
+
+        fieldnames = ["Issue Date", "Summary", "Topic", "Download URL", "Status", "Local Path", "Reason"]
+        with open(filename, "w", newline="", encoding="utf-8-sig") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(self.download_manifest)
 
         return filename
 
@@ -347,6 +378,7 @@ class FDADownloader:
         for item in pbar:
             url = item.get('Download URL')
             if not url:
+                self.record_download_status(item, status="no_download_url")
                 continue
 
             # --- 命名规则：IssueDate(yyyymmdd)_Summary ---
@@ -382,6 +414,7 @@ class FDADownloader:
 
             # 遍历已有文件列表进行前缀检查
             already_exists = False
+            existing_path = ""
             for existing_file in self.existing_files:
                 # 忽略临时文件
                 if existing_file.endswith(('.crdownload', '.tmp')):
@@ -389,14 +422,22 @@ class FDADownloader:
                 # 检查前缀 (忽略大小写可能更好，但Linux下敏感，这里保持敏感或视情况而定)
                 if existing_file.startswith(prefix_to_check):
                     already_exists = True
+                    existing_path = os.path.join(self.download_dir, existing_file)
                     break
 
             target_path_base = os.path.join(self.download_dir, target_filename_stem)
+            if not already_exists:
+                for ext in ['.pdf', '.docx', '.doc', '.zip', '.xls', '.xlsx']:
+                    potential_existing_path = target_path_base + ext
+                    if os.path.exists(potential_existing_path):
+                        already_exists = True
+                        existing_path = potential_existing_path
+                        break
 
             # 如果模糊匹配成功，或者完全匹配成功
-            if already_exists or any(os.path.exists(target_path_base + ext) for ext in
-                                     ['.pdf', '.docx', '.doc', '.zip', '.xls', '.xlsx']):
+            if already_exists:
                 pbar.set_description(f"跳过(已存在): {target_filename_stem[:15]}...")
+                self.record_download_status(item, status="skipped_existing", local_path=existing_path)
                 continue
 
             pbar.set_description(f"下载中: {target_filename_stem[:15]}...")
@@ -428,6 +469,7 @@ class FDADownloader:
 
                     if renamed:
                         self.existing_files.add(os.path.basename(final_path))
+                        self.record_download_status(item, status="downloaded", local_path=final_path)
                         success_count += 1
                     else:
                         reason = "rename failed"
@@ -441,6 +483,9 @@ class FDADownloader:
 
             time.sleep(random.uniform(0.5, 1.5))
 
+        manifest_path = self.save_download_manifest()
+        if manifest_path:
+            print(f"[*] 下载状态清单已保存: {manifest_path}")
         failure_report = self.save_download_failures()
         if failure_report:
             print(f"[!] 下载失败清单已保存: {failure_report}")

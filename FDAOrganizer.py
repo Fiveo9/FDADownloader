@@ -2,10 +2,12 @@ import os
 import shutil
 import pandas as pd
 import re
+import csv
 from tqdm import tqdm
 
 class FDAOrganizer:
-    def __init__(self, excel_path, source_dir="FDA_Downloads", target_dir="FDA_Structured_Library"):
+    def __init__(self, excel_path, source_dir="FDA_Downloads", target_dir="FDA_Structured_Library",
+                 rules_path="classification_rules.csv"):
         self.excel_path = excel_path
         self.source_dir = source_dir
         self.target_dir = target_dir
@@ -76,8 +78,25 @@ class FDAOrganizer:
             ("TOBACCO", "99_Irrelevant_Vet_Food_Tobacco"),
             ("FOOD", "99_Irrelevant_Vet_Food_Tobacco"),
         ]
+        loaded_mapping = self.load_org_mapping(rules_path)
+        if loaded_mapping:
+            self.org_mapping = loaded_mapping
 
         self.sheet_data = {}
+
+    def load_org_mapping(self, rules_path):
+        if not rules_path or not os.path.exists(rules_path):
+            return []
+
+        mapping = []
+        with open(rules_path, newline="", encoding="utf-8-sig") as rules_file:
+            reader = csv.DictReader(rules_file)
+            for row in reader:
+                keyword = (row.get("Keyword") or "").strip().upper()
+                folder_name = (row.get("Folder") or "").strip()
+                if keyword and folder_name:
+                    mapping.append((keyword, folder_name))
+        return mapping
 
     def _clean_text(self, text):
         if pd.isna(text): return ""

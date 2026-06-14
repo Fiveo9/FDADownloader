@@ -1,4 +1,6 @@
 import sys
+import os
+import tempfile
 import types
 import unittest
 
@@ -27,6 +29,16 @@ class FDAOrganizerCategoryTests(unittest.TestCase):
         }
 
         self.assertEqual("01_OCE_Oncology", self.organizer.determine_row_category(row))
+
+    def test_loads_category_rules_from_csv_when_available(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            rules_path = os.path.join(temp_dir, "classification_rules.csv")
+            with open(rules_path, "w", encoding="utf-8", newline="") as rules_file:
+                rules_file.write("Keyword,Folder\nCUSTOM CENTER,10_Custom_Center\n")
+
+            organizer = FDAOrganizer("dummy.xlsx", rules_path=rules_path)
+
+        self.assertEqual("10_Custom_Center", organizer.determine_category("custom center policy"))
 
 
 if __name__ == "__main__":

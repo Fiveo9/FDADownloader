@@ -97,6 +97,14 @@ class FDAOrganizer:
             if keyword in org_upper: return folder_name
         return "Uncategorized"
 
+    def determine_row_category(self, row):
+        category_parts = []
+        for field_name in ("FDA Organization", "Topic", "Summary", "_Title_Internal"):
+            value = row.get(field_name, "")
+            if not pd.isna(value):
+                category_parts.append(str(value))
+        return self.determine_category("\n".join(category_parts))
+
     def reconstruct_filename(self, row):
         """生成完美的标准化目标文件名 (不包含后缀)"""
         summary = str(row.get('Summary', '')).strip()
@@ -183,7 +191,7 @@ class FDAOrganizer:
         print(f"[*] 启动智能匹配引擎... 目标目录: {self.target_dir}")
 
         for _, row in tqdm(df.iterrows(), total=df.shape[0], unit="file"):
-            folder_l1 = self.determine_category(row.get('FDA Organization'))
+            folder_l1 = self.determine_row_category(row)
             target_path_dir = os.path.join(self.target_dir, folder_l1)
             target_base_filename = self.reconstruct_filename(row)
             row_data = row.to_dict()

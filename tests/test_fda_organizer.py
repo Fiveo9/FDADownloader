@@ -60,6 +60,33 @@ class FDAOrganizerCategoryTests(unittest.TestCase):
 
         self.assertEqual("01_OCE_Oncology", self.organizer.determine_row_category(row))
 
+    def test_reconstruct_filename_removes_invalid_path_characters(self):
+        row = {
+            "Summary": 'Guidance: With / Bad? "Characters"\n',
+            "Issue Date": None,
+        }
+
+        filename = self.organizer.reconstruct_filename(row)
+
+        self.assertTrue(filename.startswith("00000000_"))
+        for invalid_char in '\\/*?:"<>|\r\n\t':
+            self.assertNotIn(invalid_char, filename)
+
+    def test_find_matching_file_accepts_truncated_download_name(self):
+        row = {
+            "Summary": "Clinical Pharmacology Considerations for Oligonucleotide Therapeutics",
+            "Issue Date": None,
+        }
+        available_files = [
+            "00000000_Clinical Pharmacology Considerations.pdf",
+            "00000000_Unrelated Guidance.pdf",
+        ]
+
+        self.assertEqual(
+            "00000000_Clinical Pharmacology Considerations.pdf",
+            self.organizer.find_matching_file(row, available_files),
+        )
+
     def test_loads_category_rules_from_csv_when_available(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             rules_path = os.path.join(temp_dir, "classification_rules.csv")

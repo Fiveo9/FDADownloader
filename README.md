@@ -40,6 +40,12 @@ pip install \-r requirements.txt
 python FDADownloader.py
 ```
 
+可选参数：
+
+```
+python FDADownloader.py --url https://www.fda.gov/regulatory-information/search-fda-guidance-documents --download-dir FDA_Downloads
+```
+
 **运行流程与注意事项：**
 
 1. **启动浏览器**: 脚本会自动打开 Chrome 窗口。  
@@ -58,6 +64,12 @@ python FDADownloader.py
 
 ```
 python FDAOrganizer.py
+```
+
+可选参数：
+
+```
+python FDAOrganizer.py --excel FDA_Guidance_Data_20260529.xlsx --source FDA_Downloads --target FDA_Guidance_Library --rules classification_rules.csv
 ```
 
 **运行流程：**

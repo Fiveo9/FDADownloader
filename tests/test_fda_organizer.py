@@ -13,12 +13,25 @@ fake_tqdm = types.ModuleType("tqdm")
 fake_tqdm.tqdm = lambda iterable, **kwargs: iterable
 sys.modules.setdefault("tqdm", fake_tqdm)
 
-from FDAOrganizer import FDAOrganizer
+from FDAOrganizer import FDAOrganizer, parse_args
 
 
 class FDAOrganizerCategoryTests(unittest.TestCase):
     def setUp(self):
         self.organizer = FDAOrganizer("dummy.xlsx")
+
+    def test_parse_args_accepts_paths_and_rules(self):
+        args = parse_args([
+            "--excel", "FDA_Guidance_Data_20260529.xlsx",
+            "--source", "FDA_Downloads",
+            "--target", "FDA_Guidance_Library",
+            "--rules", "classification_rules.csv",
+        ])
+
+        self.assertEqual("FDA_Guidance_Data_20260529.xlsx", args.excel)
+        self.assertEqual("FDA_Downloads", args.source)
+        self.assertEqual("FDA_Guidance_Library", args.target)
+        self.assertEqual("classification_rules.csv", args.rules)
 
     def test_category_uses_summary_topic_and_title_in_priority_order(self):
         row = {

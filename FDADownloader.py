@@ -3,6 +3,7 @@ import time
 import re
 import random
 import csv
+import argparse
 import pandas as pd
 import subprocess
 from urllib.parse import urljoin
@@ -17,6 +18,16 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+
+
+DEFAULT_TARGET_URL = "https://www.fda.gov/regulatory-information/search-fda-guidance-documents"
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Scrape and download FDA guidance documents.")
+    parser.add_argument("--url", default=DEFAULT_TARGET_URL, help="FDA guidance search URL to scrape.")
+    parser.add_argument("--download-dir", default="FDA_Downloads", help="Directory for downloaded files.")
+    return parser.parse_args(argv)
 
 
 class FDADownloader:
@@ -542,6 +553,6 @@ class FDADownloader:
 
 
 if __name__ == "__main__":
-    TARGET_URL = "https://www.fda.gov/regulatory-information/search-fda-guidance-documents"
-    downloader = FDADownloader(TARGET_URL)
+    args = parse_args()
+    downloader = FDADownloader(args.url, args.download_dir)
     downloader.run()

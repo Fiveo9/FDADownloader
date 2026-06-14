@@ -48,10 +48,19 @@ fake_webdriver_manager_chrome.ChromeDriverManager = object
 sys.modules.setdefault("webdriver_manager", fake_webdriver_manager)
 sys.modules.setdefault("webdriver_manager.chrome", fake_webdriver_manager_chrome)
 
-from FDADownloader import FDADownloader
+from FDADownloader import FDADownloader, parse_args
 
 
 class FDADownloaderFailureLogTests(unittest.TestCase):
+    def test_parse_args_accepts_url_and_download_dir(self):
+        args = parse_args([
+            "--url", "https://example.test/guidance",
+            "--download-dir", "downloads",
+        ])
+
+        self.assertEqual("https://example.test/guidance", args.url)
+        self.assertEqual("downloads", args.download_dir)
+
     def test_download_manifest_writes_status_rows_to_csv(self):
         with tempfile.TemporaryDirectory() as download_dir:
             downloader = FDADownloader("https://example.test", download_dir=download_dir)

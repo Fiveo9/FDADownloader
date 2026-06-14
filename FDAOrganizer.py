@@ -3,7 +3,38 @@ import shutil
 import pandas as pd
 import re
 import csv
+import argparse
 from tqdm import tqdm
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Organize downloaded FDA guidance files into categorized folders.")
+    parser.add_argument("--excel", default=None, help="Excel metadata file to organize. Defaults to latest FDA_Guidance_Data_*.xlsx.")
+    parser.add_argument("--source", default="FDA_Downloads", help="Source directory containing downloaded files.")
+    parser.add_argument("--target", default="FDA_Guidance_Library", help="Target directory for the organized library.")
+    parser.add_argument("--rules", default="classification_rules.csv", help="CSV file containing Keyword,Folder classification rules.")
+    return parser.parse_args(argv)
+
+
+def find_latest_excel(directory="."):
+    excel_pattern = re.compile(r'FDA_Guidance_Data_(\d{8})\.xlsx', re.IGNORECASE)
+    candidates = []
+    for f in os.listdir(directory):
+        match = excel_pattern.match(f)
+        if match:
+            candidates.append((f, match.group(1)))
+
+    if candidates:
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0]
+
+    any_xlsx = [f for f in os.listdir(directory) if f.lower().startswith('fda_guidance_data') and f.endswith('.xlsx')]
+    if any_xlsx:
+        any_xlsx.sort(reverse=True)
+        return any_xlsx[0]
+
+    return ""
+
 
 class FDAOrganizer:
     def __init__(self, excel_path, source_dir="FDA_Downloads", target_dir="FDA_Structured_Library",
@@ -290,29 +321,20 @@ class FDAOrganizer:
         print("=" * 50)
 
 if __name__ == "__main__":
-    excel_pattern = re.compile(r'FDA_Guidance_Data_(\d{8})\.xlsx', re.IGNORECASE)
-    candidates = []
-    for f in os.listdir('.'):
-        match = excel_pattern.match(f)
-        if match: candidates.append((f, match.group(1)))
+    args = parse_args()
 
-    EXCEL_FILE = ""
-    if candidates:
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        EXCEL_FILE = candidates[0][0]
-        print(f"[*] 自动锁定最新 Excel 文件: {EXCEL_FILE}")
+    if args.excel:
+        EXCEL_FILE = args.excel
+        print(f"[*] 使用指定 Excel 文件: {EXCEL_FILE}")
     else:
-        any_xlsx = [f for f in os.listdir('.') if f.lower().startswith('fda_guidance_data') and f.endswith('.xlsx')]
-        if any_xlsx:
-            any_xlsx.sort(reverse=True)
-            EXCEL_FILE = any_xlsx[0]
+        EXCEL_FILE = find_latest_excel()
+        if EXCEL_FILE and re.match(r'FDA_Guidance_Data_(\d{8})\.xlsx', EXCEL_FILE, re.IGNORECASE):
+            print(f"[*] 自动锁定最新 Excel 文件: {EXCEL_FILE}")
+        elif EXCEL_FILE:
             print(f"[*] 使用兜底文件: {EXCEL_FILE}")
         else:
             print("[!] 未找到Excel文件")
             exit()
 
-    SOURCE_FOLDER = "FDA_Downloads"
-    TARGET_FOLDER = "FDA_Guidance_Library"
-
-    organizer = FDAOrganizer(EXCEL_FILE, SOURCE_FOLDER, TARGET_FOLDER)
+    organizer = FDAOrganizer(EXCEL_FILE, args.source, args.target, args.rules)
     organizer.run()

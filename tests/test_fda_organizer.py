@@ -7,10 +7,24 @@ import unittest
 
 fake_pandas = types.ModuleType("pandas")
 fake_pandas.isna = lambda value: value is None
+fake_pandas.notna = lambda value: value is not None
 sys.modules.setdefault("pandas", fake_pandas)
 
 fake_tqdm = types.ModuleType("tqdm")
-fake_tqdm.tqdm = lambda iterable, **kwargs: iterable
+
+
+class FakeTqdm:
+    def __init__(self, iterable):
+        self.iterable = iterable
+
+    def __iter__(self):
+        return iter(self.iterable)
+
+    def set_description(self, description):
+        self.description = description
+
+
+fake_tqdm.tqdm = lambda iterable, **kwargs: FakeTqdm(iterable)
 sys.modules.setdefault("tqdm", fake_tqdm)
 
 from FDAOrganizer import FDAOrganizer, parse_args

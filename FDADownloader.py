@@ -6,7 +6,8 @@ import csv
 import argparse
 import pandas as pd
 import subprocess
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
+from urllib.request import Request, urlopen
 
 from bs4 import BeautifulSoup
 from tqdm import tqdm
@@ -27,13 +28,16 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Scrape and download FDA guidance documents.")
     parser.add_argument("--url", default=DEFAULT_TARGET_URL, help="FDA guidance search URL to scrape.")
     parser.add_argument("--download-dir", default="FDA_Downloads", help="Directory for downloaded files.")
+    parser.add_argument("--download-mode", choices=["browser", "direct"], default="browser",
+                        help="Use browser downloads or direct HTTP downloads for document files.")
     return parser.parse_args(argv)
 
 
 class FDADownloader:
-    def __init__(self, target_url, download_dir="FDA_Downloads"):
+    def __init__(self, target_url, download_dir="FDA_Downloads", download_mode="browser"):
         self.target_url = target_url
         self.download_dir = os.path.abspath(download_dir)
+        self.download_mode = download_mode
 
         # 确保下载目录存在
         if not os.path.exists(self.download_dir):
@@ -372,6 +376,95 @@ class FDADownloader:
             time.sleep(0.5)
         return None
 
+    def build_target_filename_stem(self, item, max_summary_length=100):
+        summary = str(item.get('Summary', '')).strip()
+        if not summary or summary.lower() == 'nan':
+            summary = str(item.get('Topic', '')).strip()
+            if not summary or summary.lower() == 'nan':
+                summary = str(item.get('_Title_Internal', 'No_Summary')).strip()
+
+        safe_summary = re.sub(r'[\\/*?:"<>|\r\n\t]', "", summary)
+        if len(safe_summary) > max_summary_length:
+            safe_summary = safe_summary[:max_summary_length].strip()
+
+        date_raw = item.get('Issue Date', '')
+        formatted_date = "00000000"
+        if pd.notna(date_raw):
+            try:
+                dt = pd.to_datetime(date_raw)
+                formatted_date = dt.strftime('%Y%m%d')
+            except:
+                formatted_date = re.sub(r'[\\/*?:"<>|]', "", str(date_raw))
+
+        return f"{formatted_date}_{safe_summary}"
+
+    def find_existing_download(self, target_filename_stem):
+        match_len = max(13, int(len(target_filename_stem) * 0.9))
+        prefix_to_check = target_filename_stem[:match_len]
+
+        for existing_file in self.existing_files:
+            if existing_file.endswith(('.crdownload', '.tmp')):
+                continue
+            if existing_file.startswith(prefix_to_check):
+                return os.path.join(self.download_dir, existing_file)
+
+        target_path_base = os.path.join(self.download_dir, target_filename_stem)
+        for ext in ['.pdf', '.docx', '.doc', '.zip', '.xls', '.xlsx']:
+            potential_existing_path = target_path_base + ext
+            if os.path.exists(potential_existing_path):
+                return potential_existing_path
+
+        return ""
+
+    def download_via_http(self, data, opener=urlopen):
+        """使用直接 HTTP 请求下载文件；适合已解析出直链的记录。"""
+        print(f"\n[*] 切换至【直接 HTTP 下载模式】...")
+        print("[*] 如果链接需要浏览器会话或跳转认证，失败项会写入失败清单。")
+
+        success_count = 0
+        downloadable_items = [item for item in data if item.get('Download URL')]
+        print(f"[*] 共 {len(data)} 条记录，其中 {len(downloadable_items)} 条包含下载链接。")
+
+        pbar = tqdm(data, unit="file")
+        for item in pbar:
+            url = item.get('Download URL')
+            if not url:
+                self.record_download_status(item, status="no_download_url")
+                continue
+
+            target_filename_stem = self.build_target_filename_stem(item)
+            existing_path = self.find_existing_download(target_filename_stem)
+            if existing_path:
+                pbar.set_description(f"跳过(已存在): {target_filename_stem[:15]}...")
+                self.record_download_status(item, status="skipped_existing", local_path=existing_path)
+                continue
+
+            pbar.set_description(f"下载中: {target_filename_stem[:15]}...")
+            ext = os.path.splitext(urlparse(url).path)[1]
+            if not ext:
+                ext = ".pdf"
+            final_path = os.path.join(self.download_dir, target_filename_stem + ext)
+
+            try:
+                request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with opener(request, timeout=60) as response:
+                    payload = response.read()
+                with open(final_path, "wb") as downloaded_file:
+                    downloaded_file.write(payload)
+                self.existing_files.add(os.path.basename(final_path))
+                self.record_download_status(item, status="downloaded", local_path=final_path)
+                success_count += 1
+            except Exception as e:
+                self.record_download_failure(item, f"direct download error: {e}")
+
+        manifest_path = self.save_download_manifest()
+        if manifest_path:
+            print(f"[*] 下载状态清单已保存: {manifest_path}")
+        failure_report = self.save_download_failures()
+        if failure_report:
+            print(f"[!] 下载失败清单已保存: {failure_report}")
+        print(f"\n[√] 直接下载完成。共成功下载: {success_count} 个文件")
+
     def download_via_selenium(self, data):
         """完全使用 Selenium 进行下载"""
         if not self.driver:
@@ -542,10 +635,14 @@ class FDADownloader:
             print("[*] 将根据 Excel 内容进行下载，已存在的文件会自动跳过。")
             user_input = input(f"是否开始下载？(y/n): ").strip().lower()
         else:
-            user_input = input(f"是否使用浏览器开始下载？(y/n): ").strip().lower()
+            mode_label = "直接 HTTP" if self.download_mode == "direct" else "浏览器"
+            user_input = input(f"是否使用{mode_label}开始下载？(y/n): ").strip().lower()
 
         if user_input == 'y':
-            self.download_via_selenium(data)
+            if self.download_mode == "direct":
+                self.download_via_http(data)
+            else:
+                self.download_via_selenium(data)
 
         print("[*] 清理资源，关闭浏览器...")
         if self.driver:
@@ -554,5 +651,5 @@ class FDADownloader:
 
 if __name__ == "__main__":
     args = parse_args()
-    downloader = FDADownloader(args.url, args.download_dir)
+    downloader = FDADownloader(args.url, args.download_dir, args.download_mode)
     downloader.run()

@@ -46,6 +46,12 @@ python FDADownloader.py
 python FDADownloader.py --url https://www.fda.gov/regulatory-information/search-fda-guidance-documents --download-dir FDA_Downloads
 ```
 
+默认使用浏览器原生下载。若 Excel 中的下载链接可直接访问，也可以尝试直接 HTTP 下载：
+
+```
+python FDADownloader.py --download-mode direct
+```
+
 **运行流程与注意事项：**
 
 1. **启动浏览器**: 脚本会自动打开 Chrome 窗口。  

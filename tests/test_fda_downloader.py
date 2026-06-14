@@ -15,7 +15,20 @@ fake_bs4.BeautifulSoup = object
 sys.modules.setdefault("bs4", fake_bs4)
 
 fake_tqdm = types.ModuleType("tqdm")
-fake_tqdm.tqdm = lambda iterable, **kwargs: iterable
+
+
+class FakeTqdm:
+    def __init__(self, iterable):
+        self.iterable = iterable
+
+    def __iter__(self):
+        return iter(self.iterable)
+
+    def set_description(self, description):
+        self.description = description
+
+
+fake_tqdm.tqdm = lambda iterable, **kwargs: FakeTqdm(iterable)
 sys.modules.setdefault("tqdm", fake_tqdm)
 
 fake_openpyxl = types.ModuleType("openpyxl")
@@ -51,15 +64,63 @@ sys.modules.setdefault("webdriver_manager.chrome", fake_webdriver_manager_chrome
 from FDADownloader import FDADownloader, parse_args
 
 
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        return self.payload
+
+
 class FDADownloaderFailureLogTests(unittest.TestCase):
     def test_parse_args_accepts_url_and_download_dir(self):
         args = parse_args([
             "--url", "https://example.test/guidance",
             "--download-dir", "downloads",
+            "--download-mode", "direct",
         ])
 
         self.assertEqual("https://example.test/guidance", args.url)
         self.assertEqual("downloads", args.download_dir)
+        self.assertEqual("direct", args.download_mode)
+
+    def test_direct_download_mode_writes_file_and_manifest_status(self):
+        requested_urls = []
+
+        def fake_opener(request, timeout=60):
+            requested_urls.append(request.full_url)
+            return FakeResponse(b"pdf bytes")
+
+        with tempfile.TemporaryDirectory() as download_dir:
+            downloader = FDADownloader("https://example.test", download_dir=download_dir)
+            item = {
+                "Summary": "Direct Download Guidance",
+                "Topic": "",
+                "Issue Date": None,
+                "Download URL": "https://example.test/direct.pdf",
+            }
+
+            downloader.download_via_http([item], opener=fake_opener)
+
+            expected_path = os.path.join(download_dir, "00000000_Direct Download Guidance.pdf")
+            manifest_path = os.path.join(download_dir, "download_manifest_test.csv")
+            downloader.save_download_manifest(manifest_path)
+            with open(manifest_path, newline="", encoding="utf-8-sig") as manifest_file:
+                rows = list(csv.DictReader(manifest_file))
+
+            with open(expected_path, "rb") as downloaded_file:
+                payload = downloaded_file.read()
+
+        self.assertEqual(["https://example.test/direct.pdf"], requested_urls)
+        self.assertEqual(b"pdf bytes", payload)
+        self.assertEqual("downloaded", rows[0]["Status"])
+        self.assertTrue(rows[0]["Local Path"].endswith("00000000_Direct Download Guidance.pdf"))
 
     def test_download_manifest_writes_status_rows_to_csv(self):
         with tempfile.TemporaryDirectory() as download_dir:

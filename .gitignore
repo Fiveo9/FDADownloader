@@ -1,7 +1,10 @@
-/.idea
-*.xlsx
-/fda_downloads
-/FDA_Guidance_Library
+/.idea/
+/FDA_Downloads/
+/fda_downloads/
+/FDA_Guidance_Library/
+/FDA_Guidance_Data_*.xlsx
+/fda_guidance_data*.xlsx
+/chromedriver.exe
 __pycache__/
 .pytest_cache/
 .tmp-uv-cache/

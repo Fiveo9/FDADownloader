@@ -57,10 +57,8 @@ class FDADownloader:
             if not os.path.exists(chrome_path):
                 return None
 
-            # 通过命令行调用 chrome.exe --version 获取版本信息
-            cmd = f'"{chrome_path}" --version'
-            # 使用 subprocess 执行命令
-            result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+            # 直接调用 chrome.exe --version，避免 shell 参与命令解析
+            result = subprocess.check_output([chrome_path, "--version"], stderr=subprocess.STDOUT)
             output = result.decode('utf-8', errors='ignore').strip()
 
             # 提取版本号数字
@@ -653,3 +651,6 @@ if __name__ == "__main__":
     args = parse_args()
     downloader = FDADownloader(args.url, args.download_dir, args.download_mode)
     downloader.run()
+
+
+

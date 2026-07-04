@@ -8,7 +8,7 @@ import unittest
 
 fake_pandas = types.ModuleType("pandas")
 fake_pandas.notna = lambda value: value is not None
-sys.modules.setdefault("pandas", fake_pandas)
+sys.modules["pandas"] = fake_pandas
 
 fake_bs4 = types.ModuleType("bs4")
 fake_bs4.BeautifulSoup = object
@@ -29,7 +29,7 @@ class FakeTqdm:
 
 
 fake_tqdm.tqdm = lambda iterable, **kwargs: FakeTqdm(iterable)
-sys.modules.setdefault("tqdm", fake_tqdm)
+sys.modules["tqdm"] = fake_tqdm
 
 fake_openpyxl = types.ModuleType("openpyxl")
 fake_openpyxl.utils = types.SimpleNamespace(get_column_letter=lambda index: "A")
@@ -178,3 +178,4 @@ class FDADownloaderFailureLogTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

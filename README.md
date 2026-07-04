@@ -1,126 +1,175 @@
-# **FDA指导原则自动化下载与整理工具**
+# FDA 指导原则自动化下载与整理工具
 
-这是一个基于 Python 的自动化工具集，用于从 FDA 官网抓取、下载指导原则，并根据特定的业务逻辑将其整理归档到分类文件夹中。
+一个面向本地研究工作流的 Python 工具集，用于：
 
-本项目包含两个核心脚本：
+1. 从 FDA Guidance Documents 页面抓取元数据
+2. 下载原始文件到本地
+3. 按可配置规则整理到结构化资料库
+4. 生成可点击的 Excel 索引
 
-1. **FDADownloader.py**: 负责从 FDA 网站抓取元数据、导出 Excel 并下载文件。  
-2. **FDAOrganizer.py**: 负责读取下载的数据，按预设规则将文件分类整理到结构化目录，并生成带索引的 Excel。
+仓库目前以 Windows 本地桌面使用场景为主，尤其是浏览器自动下载和路径检测逻辑。其他平台并非完全不能运行，但没有作为默认支持目标来设计。
 
-## **🛠 功能特性**
+## 项目组成
 
-* **智能浏览器控制**: 使用 Selenium 自动化控制 Chrome，支持自动检测本地 Chrome 路径及版本。  
-* **断点续传/去重**: 自动检测本地已下载文件，避免重复下载；支持读取本地 Excel 继续未完成的任务。  
-* **规避反爬**: 模拟真实用户行为，使用浏览器原生下载功能，有效规避 FDA 网站的反爬虫机制。  
-* **规范化命名**: 下载的文件自动重命名为 YYYYMMDD_Summary 格式，便于排序和检索。  
-* **智能分类归档**: 根据 FDA 组织架构（如 CBER、CDER、CDRH）及关键词（如 Oncology、GCP）将文件自动整理到不同文件夹。  
-* **本地索引生成**: 整理完成后生成一份包含本地文件超链接的 Excel 索引表，点击即可直接打开文件。
+- `FDADownloader.py`: 抓取 FDA guidance 列表、导出 Excel、下载原始文件
+- `FDAOrganizer.py`: 根据分类规则整理文件并生成索引表
+- `classification_rules.csv`: 默认分类规则，支持自行调整优先级和目标文件夹
+- `tests/`: 面向核心逻辑的单元测试
 
-## **⚙️ 环境依赖**
+## 功能特性
 
-需要安装 Python 3.8+ 及 Google Chrome 浏览器。
+- 浏览器驱动下载，适合需要真实页面会话的场景
+- 已下载文件自动跳过，支持增量运行
+- 将文件规范命名为 `YYYYMMDD_Summary`
+- 根据 `FDA Organization`、`Topic`、`Summary` 等字段进行优先级分类
+- 生成本地 Excel 索引，便于二次检索和归档
+- 支持 `--dry-run` 预览整理结果
 
-### **安装 Python 库**
+## 适用环境
 
-请在项目根目录下运行：
+- Python 3.8+
+- Google Chrome 或兼容 Chromium 内核浏览器
+- Windows 10/11
 
+依赖安装：
+
+```bash
+pip install -r requirements.txt
 ```
-pip install \-r requirements.txt
-```
 
-*或者手动安装以下库：* selenium, pandas, beautifulsoup4, tqdm, openpyxl, webdriver-manager
+## 快速开始
 
-## **🚀 使用指南**
+### 1. 下载 guidance 元数据与原始文件
 
-### **第一步：下载数据 (FDADownloader.py)**
-
-该脚本负责抓取列表并下载源文件。
-
-```
+```bash
 python FDADownloader.py
 ```
 
-可选参数：
+常用参数：
 
-```
+```bash
 python FDADownloader.py --url https://www.fda.gov/regulatory-information/search-fda-guidance-documents --download-dir FDA_Downloads
 ```
 
-默认使用浏览器原生下载。若 Excel 中的下载链接可直接访问，也可以尝试直接 HTTP 下载：
+如果页面中的下载链接可以直接访问，也可以尝试实验性的直接下载模式：
 
-```
+```bash
 python FDADownloader.py --download-mode direct
 ```
 
-**运行流程与注意事项：**
+运行时需要注意：
 
-1. **启动浏览器**: 脚本会自动打开 Chrome 窗口。  
-2. **手动筛选 (重要)**:  
-   * 控制台会提示 【请配合手动操作】。  
-   * 在自动打开的浏览器窗口中，请在 FDA 网页的 Filters 栏选择需要的筛选条件（如有）。  
-   * **关键步骤**：请务必将显示条数设置为 **"Show All"**，并等待页面刷新，确保所有数据都已加载。
-     <div align="center"> <img src="_image/1.png" width=100%/> </div>
-3. **确认抓取**: 页面加载完毕后，在控制台按 Enter 键。  
-4. **导出 Excel**: 程序会解析表格并生成 FDA\_Guidance\_Data\_YYYYMMDD.xlsx。  
-5. **开始下载**: 程序会询问是否开始下载，输入 y 确认。浏览器将逐个下载文件并重命名存入 FDA_Downloads 文件夹。
+1. 脚本会启动浏览器并打开 FDA guidance 页面
+2. 请在页面里完成你需要的筛选
+3. 关键步骤：将结果显示数量调整为 `Show All`
+4. 等页面刷新完成后，回到终端按回车继续
 
-### **第二步：整理归档 (FDAOrganizer.py)**
+![Show All screenshot](_image/1.png)
 
-该脚本负责将下载的一锅粥文件整理成结构化的文件夹。
+完成后会在项目根目录生成 `FDA_Guidance_Data_YYYYMMDD.xlsx`，并将文件下载到 `FDA_Downloads/`。
 
-```
+### 2. 按分类规则整理本地文件
+
+```bash
 python FDAOrganizer.py
 ```
 
-可选参数：
+常用参数：
 
-```
+```bash
 python FDAOrganizer.py --excel FDA_Guidance_Data_20260529.xlsx --source FDA_Downloads --target FDA_Guidance_Library --rules classification_rules.csv
 ```
 
-预览整理结果但不复制文件、不生成索引：
+仅预览，不复制文件：
 
-```
+```bash
 python FDAOrganizer.py --dry-run
 ```
 
-**运行流程：**
+整理完成后，会在 `FDA_Guidance_Library/` 下创建分类目录，并生成 `00_FDA_Guidance_Index.xlsx`。
 
-1. 自动扫描当前目录下最新的 FDA\_Guidance\_Data\_YYYYMMDD.xlsx 文件。  
-2. 读取 FDA\_Downloads 文件夹中的源文件。  
-3. 根据内置的优先级规则，将文件**复制**到 FDA\_Guidance\_Library 目录下的分类子文件夹中。  
-4. 在 FDA\_Guidance\_Library 根目录生成 00\_FDA\_Guidance\_Index.xlsx，其中包含指向整理后文件的本地超链接。
+![Library tree example](_image/2.png)
+![Library sheets example](_image/3.png)
 
-## **📂 目录结构示例**
+## 分类规则
 
-运行完成后，你的目录结构将如下所示：
+默认规则定义在 `classification_rules.csv` 中，按从上到下的顺序匹配：
 
-<div align="center"> <img src="_image/2.png" width=100%/> </div>
+- `Keyword`: 关键词
+- `Folder`: 命中后归入的文件夹
 
-<div align="center"> <img src="_image/3.png" width=100%/> </div>
+只要首次命中就停止继续匹配，因此文件顺序就是优先级顺序。
 
-## **🧠 分类逻辑说明**
+默认规则的大致思路是：
 
-FDAOrganizer.py 采用基于优先级的关键词匹配策略。文件会按照以下逻辑进行归类（一旦匹配成功即停止）：
+1. 优先提取 Oncology 相关 guidance
+2. 将 Combination Products 单独抬高优先级
+3. 将 GCP、核查、政策类跨中心主题集中归档
+4. 再按 CDER / CBER / CDRH 等主线归类
 
-分类规则默认读取项目根目录下的 `classification_rules.csv`。该文件按从上到下的顺序匹配 `Keyword`，并将命中的文件归入对应的 `Folder`；如需调整优先级或新增分类，直接编辑该 CSV 即可。
+如果你的使用场景不同，直接编辑 `classification_rules.csv` 即可。
 
-1. **最优先**: 本人主要做肿瘤产品，因此肿瘤相关的文件拥有最高优先级，只要沾边就归入 01_OCE_Oncology。
-2. **第二层 - 药械组合（Combination）**: 这部分往往容易被淹没在 CDRH 或 CDER 里，但对预充针/自动注射笔开发至关重要，所以提级处理。  
-3. **第三层 - 跨中心功能模块**: GCP、核查（Inspection）、行政程序等通用文件，不再按中心分割，全部聚合在一起。  
-4. **核心层**:  剩下的文件按 CDER (药) > CBER (生物) > CDRH (器械) 的顺序归位。 
+## 测试
 
-## **⚠️ 常见问题**
+运行单元测试：
 
-1. **浏览器闪退或无法启动**：  
-   * 确保已安装 Chrome。  
-   * 脚本支持自动检测路径，但如果你的 Chrome 安装在非常规位置，请按照脚本启动时的提示手动输入 chrome.exe 的路径。  
-2. **下载速度慢**：  
-   * 为了防止 IP 被 FDA 封锁，脚本在下载文件之间设置了随机延时。  
-   * 下载是串行进行的（单线程），这是为了保证文件重命名的准确性。  
-3. **Excel 写入报错**：  
-   * 请确保在运行脚本时，目标 Excel 文件没有被其他软件（如 WPS/Office）打开。
+```bash
+python -m unittest discover -s tests -q
+```
 
-## **免责声明**
+GitHub Actions 也会在提交和 PR 上自动运行基础校验。
 
-本工具仅供学习和个人研究使用。请遵守 FDA 网站的使用条款及 robots.txt 协议。请勿高频滥用以免对目标服务器造成压力。
+## 生成文件与仓库策略
+
+以下内容属于本地运行产物，默认不应提交到仓库：
+
+- `FDA_Downloads/`
+- `FDA_Guidance_Library/`
+- `FDA_Guidance_Data_*.xlsx`
+
+仓库应主要保存：
+
+- 源代码
+- 测试
+- 分类规则
+- 文档和协作配置
+
+## 已知限制
+
+- 当前工作流依赖人工在网页中完成筛选和 `Show All`
+- 浏览器自动下载逻辑以 Windows 路径和桌面环境为主
+- `--download-mode direct` 依赖目标链接可直接访问，不保证对所有 guidance 都成功
+- 大批量下载时建议控制频率，避免给目标站点造成不必要压力
+
+## 常见问题
+
+### 浏览器无法启动
+
+- 确保本机已安装 Chrome
+- 如果 Chrome 不在默认路径，脚本会提示你手动输入 `chrome.exe` 路径
+
+### 下载很慢
+
+- 浏览器下载模式是串行执行
+- 脚本会插入随机等待时间，尽量降低对站点的冲击
+
+### Excel 无法写入
+
+- 请确认目标 Excel 文件没有被 WPS、Excel 或其他程序占用
+
+## 合规与免责声明
+
+本项目与 FDA 无官方关联，仅用于学习、研究和个人知识整理。
+
+请在使用前自行确认并遵守：
+
+- FDA 网站使用条款
+- robots.txt 或其他访问限制
+- 你所在组织的合规要求
+
+## 协作与许可
+
+- 许可证：MIT，见 `LICENSE`
+- 贡献指南：见 `CONTRIBUTING.md`
+- 安全披露：见 `SECURITY.md`
+- 社区行为规范：见 `CODE_OF_CONDUCT.md`

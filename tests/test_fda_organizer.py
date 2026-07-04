@@ -8,7 +8,7 @@ import unittest
 fake_pandas = types.ModuleType("pandas")
 fake_pandas.isna = lambda value: value is None
 fake_pandas.notna = lambda value: value is not None
-sys.modules.setdefault("pandas", fake_pandas)
+sys.modules["pandas"] = fake_pandas
 
 fake_tqdm = types.ModuleType("tqdm")
 
@@ -25,7 +25,7 @@ class FakeTqdm:
 
 
 fake_tqdm.tqdm = lambda iterable, **kwargs: FakeTqdm(iterable)
-sys.modules.setdefault("tqdm", fake_tqdm)
+sys.modules["tqdm"] = fake_tqdm
 
 from FDAOrganizer import FDAOrganizer, parse_args
 
@@ -154,3 +154,4 @@ class FDAOrganizerCategoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

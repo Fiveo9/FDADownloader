@@ -1,117 +1,305 @@
 # FDA 指导原则自动化下载与整理工具
 
-一个面向本地研究工作流的 Python 工具集，用于：
+这是一个给本地办公场景使用的小工具，主要帮你做两件事：
 
-1. 从 FDA Guidance Documents 页面抓取元数据
-2. 下载原始文件到本地
-3. 按可配置规则整理到结构化资料库
-4. 生成可点击的 Excel 索引
+1. 从 FDA Guidance Documents 页面抓取列表并下载原始文件
+2. 按规则把下载下来的文件整理成更容易查找的资料库
 
-仓库目前以 Windows 本地桌面使用场景为主，尤其是浏览器自动下载和路径检测逻辑。其他平台并非完全不能运行，但没有作为默认支持目标来设计。
+如果你不会写代码，也没关系。你只需要按照 README 里的步骤，依次运行 2 个命令就可以完成下载和整理。
 
-## 项目组成
+## 这个工具适合谁
 
-- `FDADownloader.py`: 抓取 FDA guidance 列表、导出 Excel、下载原始文件
-- `FDAOrganizer.py`: 根据分类规则整理文件并生成索引表
-- `classification_rules.csv`: 默认分类规则，支持自行调整优先级和目标文件夹
-- `tests/`: 面向核心逻辑的单元测试
+适合这些场景：
 
-## 功能特性
+- 需要批量保存 FDA guidance 文件到本地
+- 想把零散下载的 PDF 自动整理到分类文件夹里
+- 希望生成一个能直接点击打开文件的 Excel 索引
 
-- 浏览器驱动下载，适合需要真实页面会话的场景
-- 已下载文件自动跳过，支持增量运行
-- 将文件规范命名为 `YYYYMMDD_Summary`
-- 根据 `FDA Organization`、`Topic`、`Summary` 等字段进行优先级分类
-- 生成本地 Excel 索引，便于二次检索和归档
-- 支持 `--dry-run` 预览整理结果
+如果你只是普通办公用户，不打算改代码，也完全可以直接使用。
 
-## 适用环境
+## 你最终会得到什么
 
-- Python 3.8+
-- Google Chrome 或兼容 Chromium 内核浏览器
-- Windows 10/11
+跑完之后，通常会得到这几类结果：
 
-依赖安装：
+- `FDA_Guidance_Data_YYYYMMDD.xlsx`
+  - 这是从 FDA 页面抓下来的清单
+- `FDA_Downloads/`
+  - 这是下载下来的原始文件
+- `FDA_Guidance_Library/`
+  - 这是整理好的分类资料库
+- `00_FDA_Guidance_Index.xlsx`
+  - 这是整理后生成的索引表，能直接点开本地文件
+
+## 第一次使用，建议只看这一节
+
+下面这套流程最适合第一次使用的人。
+
+### 第 1 步：准备环境
+
+你的电脑需要有：
+
+- Windows 10 或 Windows 11
+- Python 3.8 或更高版本
+- Google Chrome 浏览器
+
+如果你已经装过 Python 和 Chrome，就可以直接继续下一步。
+
+### 第 2 步：把项目下载到本地
+
+如果你是从 GitHub 打开这个项目：
+
+1. 点击页面上的 `Code`
+2. 选择 `Download ZIP`
+3. 解压到你电脑里一个方便找到的位置，比如桌面或工作文件夹
+
+解压后，打开这个项目文件夹。
+
+### 第 3 步：打开命令行窗口
+
+在项目文件夹中：
+
+1. 点击文件夹地址栏
+2. 输入 `powershell`
+3. 按回车
+
+这样会直接在当前项目目录打开一个 PowerShell 窗口。
+
+### 第 4 步：安装依赖
+
+在打开的窗口里运行：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 快速开始
+这一步只需要首次使用时执行一次。
 
-### 1. 下载 guidance 元数据与原始文件
+### 第 5 步：先下载文件
+
+运行：
 
 ```bash
 python FDADownloader.py
 ```
 
-常用参数：
+运行后会发生这些事情：
 
-```bash
-python FDADownloader.py --url https://www.fda.gov/regulatory-information/search-fda-guidance-documents --download-dir FDA_Downloads
-```
-
-如果页面中的下载链接可以直接访问，也可以尝试实验性的直接下载模式：
-
-```bash
-python FDADownloader.py --download-mode direct
-```
-
-运行时需要注意：
-
-1. 脚本会启动浏览器并打开 FDA guidance 页面
-2. 请在页面里完成你需要的筛选
-3. 关键步骤：将结果显示数量调整为 `Show All`
-4. 等页面刷新完成后，回到终端按回车继续
+1. 程序会自动打开 Chrome
+2. 进入 FDA guidance 页面
+3. 你需要在页面里手动选择筛选条件
+4. 很重要：把显示数量改成 `Show All`
+5. 等页面完全加载后，回到 PowerShell 窗口按回车
+6. 程序会导出清单，并开始下载文件
 
 ![Show All screenshot](_image/1.png)
 
-完成后会在项目根目录生成 `FDA_Guidance_Data_YYYYMMDD.xlsx`，并将文件下载到 `FDA_Downloads/`。
+下载完成后，你会在项目目录里看到：
 
-### 2. 按分类规则整理本地文件
+- 一个 Excel 清单文件
+- 一个 `FDA_Downloads` 文件夹
+
+### 第 6 步：再整理文件
+
+下载完成后，继续运行：
 
 ```bash
 python FDAOrganizer.py
 ```
 
-常用参数：
+它会自动：
+
+- 找到最新的 Excel 清单
+- 读取 `FDA_Downloads` 里的文件
+- 按分类规则复制到新的资料库目录
+- 生成一个索引 Excel
+
+整理完成后，你主要去看 `FDA_Guidance_Library` 文件夹就可以了。
+
+![Library tree example](_image/2.png)
+![Library sheets example](_image/3.png)
+
+## 最简单的使用顺序
+
+如果你不想研究参数，只记住下面 3 条就够了：
 
 ```bash
-python FDAOrganizer.py --excel FDA_Guidance_Data_20260529.xlsx --source FDA_Downloads --target FDA_Guidance_Library --rules classification_rules.csv
+pip install -r requirements.txt
+python FDADownloader.py
+python FDAOrganizer.py
 ```
 
-仅预览，不复制文件：
+## 常见使用场景
+
+### 场景 1：我只想按默认方式跑一遍
+
+直接执行：
+
+```bash
+python FDADownloader.py
+python FDAOrganizer.py
+```
+
+这是最推荐的用法。
+
+### 场景 2：我已经有下载清单了，只想继续下载
+
+如果项目目录下已经有当天生成的 `FDA_Guidance_Data_YYYYMMDD.xlsx`，程序会问你：
+
+- 直接读取已有清单继续下载
+- 还是重新抓取
+
+如果你只是上次没下完，通常选继续即可。
+
+### 场景 3：我只想预览整理结果，不想真的复制文件
+
+运行：
 
 ```bash
 python FDAOrganizer.py --dry-run
 ```
 
-整理完成后，会在 `FDA_Guidance_Library/` 下创建分类目录，并生成 `00_FDA_Guidance_Index.xlsx`。
+这个模式只看结果，不真正复制文件，也不会生成最终索引表。
 
-![Library tree example](_image/2.png)
-![Library sheets example](_image/3.png)
+## 常用命令
 
-## 分类规则
+### 下载 guidance 和原始文件
 
-默认规则定义在 `classification_rules.csv` 中，按从上到下的顺序匹配：
+```bash
+python FDADownloader.py
+```
 
-- `Keyword`: 关键词
-- `Folder`: 命中后归入的文件夹
+### 整理下载结果
 
-只要首次命中就停止继续匹配，因此文件顺序就是优先级顺序。
+```bash
+python FDAOrganizer.py
+```
 
-默认规则的大致思路是：
+### 指定下载目录
 
-1. 优先提取 Oncology 相关 guidance
-2. 将 Combination Products 单独抬高优先级
-3. 将 GCP、核查、政策类跨中心主题集中归档
-4. 再按 CDER / CBER / CDRH 等主线归类
+```bash
+python FDADownloader.py --download-dir FDA_Downloads
+```
 
-如果你的使用场景不同，直接编辑 `classification_rules.csv` 即可。
+### 指定某个 Excel 清单来整理
+
+```bash
+python FDAOrganizer.py --excel FDA_Guidance_Data_20260529.xlsx --source FDA_Downloads --target FDA_Guidance_Library --rules classification_rules.csv
+```
+
+### 直接下载模式
+
+```bash
+python FDADownloader.py --download-mode direct
+```
+
+说明：这个模式不一定适合所有 guidance 页面，只适合下载链接本身可以直接访问的情况。
+
+## 每一步大概在做什么
+
+### `FDADownloader.py`
+
+它负责：
+
+- 打开 FDA guidance 页面
+- 读取页面表格
+- 导出 Excel 清单
+- 下载原始文件
+- 避免重复下载
+
+### `FDAOrganizer.py`
+
+它负责：
+
+- 读取 Excel 清单
+- 找到本地已下载文件
+- 按规则分类整理
+- 生成带超链接的索引 Excel
+
+## 分类规则怎么改
+
+默认规则保存在 `classification_rules.csv`。
+
+这个文件有两列：
+
+- `Keyword`
+- `Folder`
+
+意思是：
+
+- 如果文件信息里匹配到某个关键词
+- 就把它归入对应文件夹
+
+而且是从上到下按顺序匹配，所以越靠前，优先级越高。
+
+如果你的业务重点不是 Oncology，或者你想单独分出别的主题，可以直接编辑这个 CSV 文件。
+
+## 常见问题
+
+### 1. 浏览器没有自动打开
+
+请先确认：
+
+- 电脑上已经安装 Chrome
+- Chrome 可以正常手动打开
+
+如果 Chrome 不在默认路径，程序会提示你手动输入 `chrome.exe` 的完整路径。
+
+### 2. 页面打开了，但程序不继续
+
+这是正常的。
+
+因为程序在等你手动完成这一步：
+
+- 在 FDA 页面设置筛选条件
+- 把显示数量调成 `Show All`
+- 等页面加载完
+- 然后回到命令行窗口按回车
+
+### 3. 下载速度比较慢
+
+这是正常设计，不是卡死。
+
+原因是：
+
+- 下载本身是串行进行的
+- 程序故意加入了随机等待时间
+- 这样更稳，也能减少对目标网站的冲击
+
+### 4. Excel 写入失败
+
+大多数情况是因为目标 Excel 正在被打开。
+
+请先关闭：
+
+- Excel
+- WPS
+- 其他正在占用该文件的软件
+
+然后重新运行。
+
+### 5. 整理后发现有些文件没进目标目录
+
+通常可以先检查这几件事：
+
+- 文件是否真的下载到了 `FDA_Downloads`
+- Excel 清单里的日期、标题是否正常
+- `classification_rules.csv` 是否把它分到了你没注意到的目录
+
+## 适用环境
+
+当前仓库主要按下面的环境设计：
+
+- Python 3.8+
+- Google Chrome 或兼容 Chromium 内核浏览器
+- Windows 10/11
+
+虽然理论上不一定完全限制在 Windows，但默认流程和路径检测都是围绕 Windows 本地桌面场景写的。
 
 ## 测试
 
-运行单元测试：
+如果你是普通使用者，这一节可以跳过。
+
+开发或验证时可以运行：
 
 ```bash
 python -m unittest discover -s tests -q
@@ -140,22 +328,6 @@ GitHub Actions 也会在提交和 PR 上自动运行基础校验。
 - 浏览器自动下载逻辑以 Windows 路径和桌面环境为主
 - `--download-mode direct` 依赖目标链接可直接访问，不保证对所有 guidance 都成功
 - 大批量下载时建议控制频率，避免给目标站点造成不必要压力
-
-## 常见问题
-
-### 浏览器无法启动
-
-- 确保本机已安装 Chrome
-- 如果 Chrome 不在默认路径，脚本会提示你手动输入 `chrome.exe` 路径
-
-### 下载很慢
-
-- 浏览器下载模式是串行执行
-- 脚本会插入随机等待时间，尽量降低对站点的冲击
-
-### Excel 无法写入
-
-- 请确认目标 Excel 文件没有被 WPS、Excel 或其他程序占用
 
 ## 合规与免责声明
 
